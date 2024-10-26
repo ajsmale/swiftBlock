@@ -206,16 +206,26 @@ class PreviewMesh():
         bcifaces = bcifaces.astype(int).tolist()
         return bcfaces,bcifaces
 
-    def runBlockMesh(self):
-        subprocess.call([self.blockMeshbin,'-case',self.tempdir],stdout=subprocess.PIPE)
+    def runBlockMesh(self, **kwargs):
+        casedir = kwargs.pop('casedir', self.tempdir)
+        if os.name=='nt' and shutil.which('wsl'):
+            subprocess.call(self.blockMeshbin,stdout=subprocess.PIPE,cwd=casedir)
+        else:
+            subprocess.call([self.blockMeshbin,'-case',casedir],stdout=subprocess.PIPE)
 
     def runMesh(self,runBlockMesh=True,internalCells=False):
-        if not shutil.which('blockMesh'):
+        if os.name=='posix' and not shutil.which('blockMesh'):
             return [], []
-        if runBlockMesh:
+        elif os.name=='posix' and shutil.which('blockMesh'):
             self.blockMeshbin = 'blockMesh'
             print('running blockMesh')
             self.runBlockMesh()
+        elif os.name=='nt' and shutil.which('wsl'):
+            self.blockMeshbin = ['wsl', 'bash', '-c', 'source /etc/profile.d/mpi-selector.sh && source ~/OpenFOAM/OpenFOAM-v2206/etc/bashrc WM_COMPILE_OPTION=Opt && blockMesh']
+            print('running blockMesh')
+            self.runBlockMesh(casedir = '/'+'/'.join(self.tempdir.split(sep='\\')[1:]))
+        else:
+            return [], []
         faces, bcifaces=self.getBCFaces2(internalCells)
         points=self.getPoints(faces)
         shutil.rmtree(self.tempdir)
